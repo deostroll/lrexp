@@ -4,15 +4,26 @@ var app = connect();
 var logger = require('morgan');
 var fs = require('fs');
 var cheerio = require('cheerio');
-
+var path = require('path');
 var rx_static = /\.(html|css|js|htm)$/;
 var rx_html = /\.(html|htm)$/;
 
-var isStatic = function(url) {
-	return rx_static.test(url);
-};
-
+var isStatic = function(url) { return rx_static.test(url); };
 var isHtml = function(url) { return rx_html.test(url); };
+var files = [];
+
+function walk(currentDirPath, callback) {
+    var fs = require('fs'), path = require('path');
+    fs.readdirSync(currentDirPath).forEach(function(name) {
+        var filePath = path.join(currentDirPath, name);
+        var stat = fs.statSync(filePath);
+        if (stat.isFile()) {
+            callback(filePath, stat);
+        } else if (stat.isDirectory()) {
+            walk(filePath, callback);
+        }
+    });
+}
 
 app.use(logger('dev'));
 
@@ -20,21 +31,35 @@ app.use('/livereload', function(req, res) {
 	res.end('this is livereload');
 });
 
-app.use(function(res, req, next) {
+walk(path.resolve('src'), function(filename, stat){
+	if(stat.isDirectory()) return;
+	console.log(filename);
+	files.push(filename);
+});
+
+app.use(function(req, res, next) {
+	console.log('middleware');
+	var url = req.url;
 	if(req.method === 'GET') {
 		if(!isStatic(url)) {
 			next();
 		}
 		if(isHtml(url)) {
 			var file = path.basename(url);
-			var filePath = path.resolve(path.join(options.directory, file));
+			var filePath = path.resolve(path.join('./src', file));
 			var stat = fs.statSync(filePath);
 			if(stat) {
 				var html = fs.readFileSync(filePath, 'utf8');
 				var $ = cheerio.load(html);
-				$('link, script').forEach(function(_, el) {
-
+				$('link, script').each(function(_, el) {
+					if(el.name === 'link') {
+						console.log(el.attribs);
+					}
+					else if(el.name === 'script' ){
+						console.log(el.attribs);
+					}
 				});
+				res.end(html);				
 			}
 			else {
 				//file does not exist
