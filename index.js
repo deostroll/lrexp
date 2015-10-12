@@ -28,6 +28,11 @@ function walk(currentDirPath, callback) {
 app.use(logger('dev'));
 
 app.use('/livereload', function(req, res) {
+	console.log({
+		'url' : req.url,
+		'query': req.query
+	});
+
 	res.end('this is livereload');
 });
 
@@ -37,6 +42,16 @@ walk(path.resolve('src'), function(filename, stat){
 	files.push(filename);
 });
 
+var assetExists = function(assetUrl) {
+	var filePath = path.resolve(path.join('src', path.basename(assetUrl)));
+	return !!fs.statSync(filePath);
+};
+
+var trackId = 0;
+var trackUrl = function(url) {
+
+};
+
 app.use(function(req, res, next) {
 	console.log('middleware');
 	var url = req.url;
@@ -44,20 +59,19 @@ app.use(function(req, res, next) {
 		if(!isStatic(url)) {
 			next();
 		}
-		if(isHtml(url)) {
-			var file = path.basename(url);
-			var filePath = path.resolve(path.join('./src', file));
-			var stat = fs.statSync(filePath);
-			if(stat) {
+		if(isHtml(url)) {			
+			if(assetExists(url)) {
 				var html = fs.readFileSync(filePath, 'utf8');
 				var $ = cheerio.load(html);
 				$('link, script').each(function(_, el) {
+					var asset = '';
 					if(el.name === 'link') {
-						console.log(el.attribs);
+						asset = el.attribs.href;
 					}
-					else if(el.name === 'script' ){
-						console.log(el.attribs);
+					else if(el.name === 'script' ) {
+						asset = el.attribs.src;
 					}
+
 				});
 				res.end(html);				
 			}
