@@ -1,17 +1,37 @@
+var LIVE_RELOAD_PORT = 3454;
+var STATIC_SERVE_PORT = 3000;
+var STATIC_FOLDER = 'src';
+
 var connect = require('connect');
 var http = require('http');
-var app = connect();
 var logger = require('morgan');
 var fs = require('fs');
 var cheerio = require('cheerio');
 var path = require('path');
+var urlib = require('url');
+var serveStatic = require('serve-static');
+var send = require('send');
+
+var app = connect();
+var lr = connect();
+
 var rx_static = /\.(html|css|js|htm)$/;
 var rx_html = /\.(html|htm)$/;
 
 var isStatic = function(url) { return rx_static.test(url); };
 var isHtml = function(url) { return rx_html.test(url); };
-var files = [];
+var getQuery = function(url) {
+	var uri = urlib.parse(url);
+	var query = {};
+	uri.query.split('&').forEach(function(qsComponent){
+		var component = qsComponent.split('=');
+		query[decodeURIComponent(component[0])] = decodeURIComponent(component[1]);
+	});
+	return query;
+};
 
+
+var fcache = {};
 function walk(currentDirPath, callback) {
     var fs = require('fs'), path = require('path');
     fs.readdirSync(currentDirPath).forEach(function(name) {
@@ -24,59 +44,94 @@ function walk(currentDirPath, callback) {
         }
     });
 }
+walk(path.resolve(STATIC_FOLDER), function(filename, stat){
+	if(stat.isDirectory()) return;
+	console.log(filename);	
+	fcache[filename] = new Date().getTime();
+});
 
 app.use(logger('dev'));
+lr.use(logger('dev'));
 
 app.use('/livereload', function(req, res) {
-	console.log({
-		'url' : req.url,
-		'query': req.query
-	});
+	var parts = urlib.parse(req.url);
+	console.log(parts);
 
 	res.end('this is livereload');
 });
 
-walk(path.resolve('src'), function(filename, stat){
-	if(stat.isDirectory()) return;
-	console.log(filename);
-	files.push(filename);
-});
-
-var assetExists = function(assetUrl) {
-	var filePath = path.resolve(path.join('src', path.basename(assetUrl)));
-	return !!fs.statSync(filePath);
+var assetInPath = function(assetUrl) {
+	console.log('assetInPath: ', assetUrl);
+	var filePath = path.resolve(path.join(STATIC_FOLDER, assetUrl));
+	console.log('assetInPath: ', filePath);
+	return !!fcache[filePath];
 };
 
-var trackId = 0;
-var trackUrl = function(url) {
-
+var getAssetPath = function(url) {	
+	console.log('getAssetPath:', url);
+	var filePath = path.resolve(path.join(STATIC_FOLDER, url));
+	console.log('getAssetPath:', filePath);
+	return filePath;
 };
 
-app.use(function(req, res, next) {
-	console.log('middleware');
+var assetId = 0;
+var assets = [];
+var session = 0;
+
+var assetTrack = function(session, url) {
+	if(assetInPath(url)) {
+		var f = getAssetPath(url);
+		var obj = assets[session];
+		if(!obj.items) {
+			obj.items = [];
+		}
+		var ix = obj.items.push({
+			stamp: fcache[f],
+			url: url
+		});
+
+		return url + '?s=' + session + '&_=' + fcache[f] + '&ix=' + (ix-1);
+	}
+	return url;
+};
+
+app.use(function(req, res, next) {	
 	var url = req.url;
 	if(req.method === 'GET') {
 		if(!isStatic(url)) {
 			next();
 		}
 		if(isHtml(url)) {			
-			if(assetExists(url)) {
-				var html = fs.readFileSync(filePath, 'utf8');
-				var $ = cheerio.load(html);
+			if(assetInPath(url)) {				
+				assets.push({session: session});				
+				var html = fs.readFileSync(getAssetPath(url), 'utf8');
+				var $ = cheerio.load(html, {decodeEntities: false});
+				assetTrack(session, url);
 				$('link, script').each(function(_, el) {
 					var asset = '';
 					if(el.name === 'link') {
-						asset = el.attribs.href;
+						asset = el.attribs.href = assetTrack(session, el.attribs.href);
 					}
 					else if(el.name === 'script' ) {
-						asset = el.attribs.src;
+						asset = el.attribs.src = assetTrack(session, el.attribs.src);
 					}
-
+					if(asset.indexOf('?')) {
+						console.log('Tracked: ', asset);
+					}
+					else {
+						console.log('Untracked:', asset);
+					}
 				});
-				res.end(html);				
+
+				$('body').append('<script src="//localhost:' + LIVE_RELOAD_PORT + '/lrsetup?s=' + session + '"></script>');
+				session++;
+				var h = $.html();
+				console.log(h);
+				res.write(h);				
+				res.end();
 			}
 			else {
-				//file does not exist
+				//file does not exist, but pass it to the next middleware...
 				next();
 			}
 		}
@@ -87,11 +142,19 @@ app.use(function(req, res, next) {
 	}
 });
 
-http.createServer(app).listen(3000, function() {
-	console.log('Listening...');
-}).on('connection', function() {
-	console.log('connected');
+app.use(serveStatic('src'));
+
+lr.use('/lrsetup', function(req, res) {
+	send(req, 'live-reload-script.js').pipe(res);
 });
+
+lr.listen(LIVE_RELOAD_PORT, function(){
+	console.log('Live server running...');
+	http.createServer(app).listen(STATIC_SERVE_PORT, function() {
+	console.log('Static server running...');
+	});
+});
+
 
 fs.watch('src', {
 	recursive: true
