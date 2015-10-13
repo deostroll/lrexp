@@ -86,7 +86,7 @@ var assetTrack = function(session, url) {
 			obj.items = [];
 		}
 		var ix = obj.items.push({
-			stamp: fcache[f],
+			_: fcache[f],
 			url: url
 		});
 
@@ -103,10 +103,11 @@ app.use(function(req, res, next) {
 		}
 		if(isHtml(url)) {			
 			if(assetInPath(url)) {				
-				assets.push({session: session});				
+				var sobj = {session: session, items: []};
+				assets.push(sobj);				
 				var html = fs.readFileSync(getAssetPath(url), 'utf8');
 				var $ = cheerio.load(html, {decodeEntities: false});
-				assetTrack(session, url);
+				assetTrack(session, url);				
 				$('link, script').each(function(_, el) {
 					var asset = '';
 					if(el.name === 'link') {
@@ -122,8 +123,15 @@ app.use(function(req, res, next) {
 						console.log('Untracked:', asset);
 					}
 				});
+				console.log("asset:", assets[0]);				
+				var _ = assets[session].items[0]._;
+				$('body').append('<script src="//localhost:' +
+					LIVE_RELOAD_PORT +
+					'/lrsetup?s=' +
+					session +
+					'&ix=' + 0 +
+					'&_=' + _ + '"></script>');
 
-				$('body').append('<script src="//localhost:' + LIVE_RELOAD_PORT + '/lrsetup?s=' + session + '"></script>');
 				session++;
 				var h = $.html();
 				console.log(h);
@@ -146,6 +154,36 @@ app.use(serveStatic('src'));
 
 lr.use('/lrsetup', function(req, res) {
 	send(req, 'live-reload-script.js').pipe(res);
+});
+
+lr.use('/refresh', function(req, res){
+	res.writeHead({
+		'Content-Type' : 'application/json',
+		'Charset'	   : 'utf8'
+	});
+	//console.log(req.url, req.query);
+	var url = req.url;
+	//console.log('url:', url);
+	var query = {};
+	var idx = url.indexOf('?');
+	url.substr(idx + 1).split('&').forEach(function(kvpair){
+		console.log(kvpair);
+		var c = kvpair.split('=');
+		query[c[0]] = c[1];
+	});
+
+	req.query = query;
+	//console.log('Query:', req.query);
+	var asset = assets[req.query.s];
+	console.log('asset', assets);
+	var o = asset.items.map(function(itm, idx){
+		return { 
+			ix: idx,
+			_: itm.stamp
+		};
+	});
+
+	res.end(req.query.callback + '(' + JSON.stringify(o) + ')');
 });
 
 lr.listen(LIVE_RELOAD_PORT, function(){
