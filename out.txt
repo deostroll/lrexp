@@ -1,4 +1,0 @@
-{
-  "r1": "<ul id=\"fruits\">你可能感兴趣</ul>",
-  "r2": "<ul id=\"fruits\">&#x4F60;&#x53EF;&#x80FD;&#x611F;&#x5174;&#x8DA3;</ul>"
-}

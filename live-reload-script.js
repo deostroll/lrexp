@@ -25,14 +25,26 @@
 	}
 
 	function performRefresh(data) {
-		console.log('data:', data);
-		data.forEach(function(d){
-			if(d._ !== elCache[d.ix]._) {
+		console.log('data:', JSON.stringify(data, null, 2));
+		console.log('elCache', JSON.stringify(elCache, null, 2));
+		data.forEach(function(d) {
+			var entry = elCache[d.ix];
+			var el = entry.el;
+			var _ = entry._;
+			if(d._ !== _) {
 				if(d.ix === 0) {
 					window.location.reload();
 					return;
 				}
-
+				if(el.tagName === 'LINK') {
+					var old = el.href;
+					var re = new RegExp(_);
+					el.href = old.replace(re, d._);					
+				}
+				else {
+					console.log('script:', el.src);
+				}
+				entry._ = d._;
 			}
 		});
 	}
@@ -63,12 +75,12 @@
 		if('ix' in query) {
 			elCache[query.ix] = {
 				el: el,
-				_: query._
+				_: +query._
 			};
 		}
 	});
 	console.log(elCache);
 	window.liveRefresh = performRefresh;
-	window.disableLiveRefresh = true;
+	window.disableLiveRefresh = false;
 	window.lrInterval = setInterval(poll, 1000);
 })(window.document);

@@ -56,18 +56,22 @@ var watchRoutine = function(evt, filename) {
 };
 
 // following code should be enabled on windows...
-// fs.watch(path.resolve(STATIC_FOLDER), { recursive: true }, function(evt, fname) {
-// 	console.log('watch', {evt:evt, fname: fname});
-// 	fcache[fname] = new Date().getTime();
-// });
-var fnWatchRoutine = function(filename) {
-	console.log('Watch:', filename);
-	fcache[filename] = new Date().getTime();
-};
-
-Object.keys(fcache).forEach(function(file){
-	fs.watchFile(file, fnWatchRoutine.bind(this, file));
+fs.watch(path.resolve(STATIC_FOLDER), { recursive: true }, function(evt, fname) {
+	console.log('watch', {evt:evt, fname: fname});
+	var file = path.resolve(path.join(STATIC_FOLDER, fname));
+	console.log(file);
+	fcache[file] = new Date().getTime();
 });
+
+// following code to do on linux...
+// var fnWatchRoutine = function(filename) {
+// 	console.log('Watch:', filename);
+// 	fcache[filename] = new Date().getTime();
+// };
+
+// Object.keys(fcache).forEach(function(file){
+// 	fs.watchFile(file, fnWatchRoutine.bind(this, file));
+// });
 
 console.log(fcache);
 app.use(logger('dev'));
@@ -105,11 +109,15 @@ var assetTrack = function(session, url) {
 		if(!obj.items) {
 			obj.items = [];
 		}
-		var ix = obj.items.push({
-			_: fcache[f],
+		var ix = obj.items.push({			
 			url: url
 		});
-
+		Object.defineProperty(obj.items[obj.items.length - 1], '_', {
+			enumerable: true,
+			get: function() {
+				return fcache[f];
+			}
+		});
 		return url + '?s=' + session + '&_=' + fcache[f] + '&ix=' + (ix-1);
 	}
 	return url;
@@ -156,6 +164,7 @@ app.use(function(req, res, next) {
 				var h = $.html();
 				console.log(h);
 				res.write(h);				
+				console.log("done");
 				res.end();
 			}
 			else {
@@ -171,6 +180,16 @@ app.use(function(req, res, next) {
 });
 
 app.use(serveStatic('src'));
+app.use('/debug', function(req, res){
+	res.end(JSON.stringify(assets, null, 2));
+});
+
+app.use(function(req, res){
+	if(res.status < 450) {
+		res.end();
+	}
+});
+
 
 lr.use('/lrsetup', function(req, res) {
 	send(req, 'live-reload-script.js').pipe(res);
@@ -195,11 +214,11 @@ lr.use('/refresh', function(req, res){
 	req.query = query;
 	//console.log('Query:', req.query);
 	var asset = assets[req.query.s];
-	console.log('asset', assets);
+	console.log('asset', JSON.stringify(assets, null, 2));
 	var o = asset.items.map(function(itm, idx){
 		return { 
 			ix: idx,
-			_: itm.stamp
+			_: itm._
 		};
 	});
 
