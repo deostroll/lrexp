@@ -50,6 +50,26 @@ walk(path.resolve(STATIC_FOLDER), function(filename, stat){
 	fcache[filename] = new Date().getTime();
 });
 
+var watchRoutine = function(evt, filename) {
+	console.log('FsWatch-',evt ,'-', filename);
+	fcache[filename] = new Date().getTime();
+};
+
+// following code should be enabled on windows...
+// fs.watch(path.resolve(STATIC_FOLDER), { recursive: true }, function(evt, fname) {
+// 	console.log('watch', {evt:evt, fname: fname});
+// 	fcache[fname] = new Date().getTime();
+// });
+var fnWatchRoutine = function(filename) {
+	console.log('Watch:', filename);
+	fcache[filename] = new Date().getTime();
+};
+
+Object.keys(fcache).forEach(function(file){
+	fs.watchFile(file, fnWatchRoutine.bind(this, file));
+});
+
+console.log(fcache);
 app.use(logger('dev'));
 lr.use(logger('dev'));
 
@@ -190,15 +210,5 @@ lr.listen(LIVE_RELOAD_PORT, function(){
 	console.log('Live server running...');
 	http.createServer(app).listen(STATIC_SERVE_PORT, function() {
 	console.log('Static server running...');
-	});
-});
-
-
-fs.watch('src', {
-	recursive: true
-}, function(event, filename){
-	console.log('Watch Event', {
-		event:event,
-		filename: filename
 	});
 });
